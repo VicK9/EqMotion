@@ -21,7 +21,7 @@ source activate locs_new
 cd ~/EqMotion
 
 # Define an array of the molecules to be used
-molecules=("aspirin", "benzene")   # Adjust script names as per your files
+molecules=("aspirin" "benzene")   # Adjust script names as per your files
 
 mol=${molecules[$SLURM_ARRAY_TASK_ID-1]}
  
