@@ -274,6 +274,8 @@ def main():
         # create a wandb dataset artifact
         artifact = wandb.Artifact("dataset", type="dataset")
         run.log_artifact(artifact)
+    else:
+        run = None
     results = {"epochs": [], "losess": []}
     best_val_loss = 1e8
     best_test_loss = 1e8
