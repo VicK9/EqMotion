@@ -233,10 +233,9 @@ class Localizer(nn.Module):
         # R = gram_schmidt(vel, acc)
         # Compute the relative positions of the objects wrt to the position of
         # each object in the sequence at the current time step (last)
-
         rel_pos = torch.cat(
             [
-                sequence[..., : self.num_dims] - sequence[:, [-1], :, : self.num_dims],
+                sequence[..., : self.num_dims] - sequence[:, :, [-1], : self.num_dims],
                 sequence[..., self.num_dims : 2 * self.num_dims],
             ],
             dim=-1,
@@ -246,17 +245,17 @@ class Localizer(nn.Module):
             vel = inputs[..., self.num_dims : 2 * self.num_dims]
             R = velocity_to_rotation_matrix(vel)
         elif self.type == "velacc":
-            vel = sequence[:, -1, :, self.num_dims : 2 * self.num_dims]
+            vel = sequence[..., -1, self.num_dims : 2 * self.num_dims]
             acc = (
-                sequence[:, -1, :, self.num_dims : 2 * self.num_dims]
-                - sequence[:, -2, :, self.num_dims : 2 * self.num_dims]
+                sequence[..., -1, self.num_dims : 2 * self.num_dims]
+                - sequence[..., -2, self.num_dims : 2 * self.num_dims]
             )
             R = construct_3d_basis_from_2_vectors(vel, acc)
         elif self.type == "resmlp":
-            vel = sequence[:, -1, :, self.num_dims : 2 * self.num_dims]
+            vel = sequence[..., -1, self.num_dims : 2 * self.num_dims]
             acc = (
-                sequence[:, -1, :, self.num_dims : 2 * self.num_dims]
-                - sequence[:, -2, :, self.num_dims : 2 * self.num_dims]
+                sequence[..., -1, self.num_dims : 2 * self.num_dims]
+                - sequence[..., -2, self.num_dims : 2 * self.num_dims]
             )
             init_R = construct_3d_basis_from_2_vectors(vel, acc).detach()
             mlp_R = self.frame_module(rel_pos)
@@ -277,10 +276,10 @@ class Localizer(nn.Module):
                 edge_attr = node_distances
             vel_acc = torch.cat(
                 [
-                    sequence[:, -1, :, self.num_dims : 2 * self.num_dims].unsqueeze(-1),
+                    sequence[..., -1, self.num_dims : 2 * self.num_dims].unsqueeze(-1),
                     (
-                        sequence[:, -1, :, self.num_dims : 2 * self.num_dims]
-                        - sequence[:, -2, :, self.num_dims : 2 * self.num_dims]
+                        sequence[..., -1, self.num_dims : 2 * self.num_dims]
+                        - sequence[..., -2, self.num_dims : 2 * self.num_dims]
                     ).unsqueeze(-1),
                 ],
                 dim=-1,
