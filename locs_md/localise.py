@@ -2,24 +2,19 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.data as data
-import torch.optim as optim
 import math
 
 # import emlp.nn.pytorch as emlpnn
 # from emlp.reps import T, V
 # from emlp.groups import SO
 import pdb
-from locs.models.egnn import E_GCL, EGNN_vel
 from locs.models.gvp import GVP
-from torch_geometric.nn import GATConv
 from torch_geometric.nn.models import GAT
-from typing import Optional
-from locs.models.my_egnn import EGNN_rot
+from locs_md.my_egnn import EGNN_rot
 
 from locs.utils.geometry import construct_3d_basis_from_2_vectors, multiply_matrices
 
-import rff
+# import rff
 
 
 def gram_schmidt(vel, acc):
@@ -179,7 +174,7 @@ class FrameTransformer(nn.Module):
         cls = norm_x[0]
         out = self.mlp_head(cls).reshape(B, N, 2 * self.trajectory_size).unsqueeze(-1)
         # 2*T
-        x = x.unflatten(-1, (2, 3)).transpose(1, 2).flatten(2, 3)
+        x = x.unflatten(-1, (2, 3)).flatten(2, 3)
 
         # B,N,2*T,3
         y = out * x
@@ -272,7 +267,7 @@ class FrameTransformer2(nn.Module):
         # B,N,2T,3
         out = self.mlp_head(norm_x).transpose(0, 1).unsqueeze(-1)
 
-        x = x.unflatten(-1, (2, 3)).transpose(1, 2).flatten(2, 3)
+        x = x.unflatten(-1, (2, 3)).flatten(2, 3)
 
         # B,N,2*T,3
         y = out * x
@@ -325,19 +320,19 @@ class FrameMLP(nn.Module):
         # Input layer
         self.mlp.add_module(
             "input_layer",
-            rff.layers.GaussianEncoding(
-                sigma=10.0,
-                input_size=2 * self.trajectory_size,
-                encoded_size=self.embed_dim,
-            ),
-            # nn.Linear(2 * self.trajectory_size, self.embed_dim),
+            # rff.layers.GaussianEncoding(
+            #     sigma=10.0,
+            #     input_size=2 * self.trajectory_size,
+            #     encoded_size=self.embed_dim,
+            # ),
+            nn.Linear(2 * self.trajectory_size, self.embed_dim),
         )
         self.mlp.add_module("input_layer_activation", nn.GELU())
         self.mlp.add_module("input_layer_dropout", nn.Dropout(self.dropout))
         # Embedding layer
         self.mlp.add_module(
             "hidden_layer_0",
-            nn.Linear(self.embed_dim * 2, self.hidden_dim),
+            nn.Linear(self.embed_dim, self.hidden_dim),
         )
         self.mlp.add_module("hidden_layer_0_activation", nn.GELU())
         self.mlp.add_module("hidden_layer_0_dropout", nn.Dropout(self.dropout))
@@ -364,7 +359,6 @@ class FrameMLP(nn.Module):
         # positional and velocity features. We need to reshape the input to be in the form of
         # [B, N, T * num_features].
         # Reshape input from [B,N,T,num_features] to be [B,N, T * num_features]
-
         B, N, T, F = x.shape
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
         norm_x = norm_x.reshape(B, N, T * 2)
@@ -372,7 +366,7 @@ class FrameMLP(nn.Module):
         out = self.mlp(norm_x).unsqueeze(-1)
 
         # 2*T
-        x = x.unflatten(-1, (2, 3)).transpose(1, 2).flatten(2, 3)
+        x = x.unflatten(-1, (2, 3)).flatten(2, 3)
 
         # B,N,2*T,3
         y = out * x
@@ -410,12 +404,12 @@ class FrameResMLP(nn.Module):
         # Layers/Networks
         # Define an MLP to pass the transformed features through num_layer times and use GeLU as the activation function
         self.mlp = nn.Sequential(
-            rff.layers.GaussianEncoding(
-                sigma=10.0,
-                input_size=2 * self.trajectory_size,
-                encoded_size=self.embed_dim // 2,
-            ),
-            # nn.Linear(2 * self.trajectory_size, self.embed_dim),
+            # rff.layers.GaussianEncoding(
+            #     sigma=10.0,
+            #     input_size=2 * self.trajectory_size,
+            #     encoded_size=self.embed_dim // 2,
+            # ),
+            nn.Linear(2 * self.trajectory_size, self.embed_dim),
             nn.GELU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.embed_dim, self.hidden_dim),
@@ -442,7 +436,7 @@ class FrameResMLP(nn.Module):
 
         out = self.mlp(norm_x).unsqueeze(-1)
         # 2*T
-        x = x.unflatten(-1, (2, 3)).transpose(1, 2).flatten(2, 3)
+        x = x.unflatten(-1, (2, 3)).flatten(2, 3)
         # B,N,2*T,3
         y = out * x
         y = self.gvp_linear(y.transpose(-1, -2)).transpose(-1, -2)
@@ -492,7 +486,7 @@ class FrameGVP(nn.Module):
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
         norm_x = norm_x.reshape(B, N, T * 2)
         # B,N,2*T,3
-        x = x.unflatten(-1, (2, 3)).transpose(1, 2).flatten(2, 3)
+        x = x.unflatten(-1, (2, 3)).flatten(2, 3)
         # Pass these to the GVP
         s, v = self.GVP((norm_x, x))
         # Construct the rotation matrix
@@ -555,11 +549,11 @@ class TemporalEncoder(nn.Module):
         self.dropout_prob = params.get("localizer_dropout", 0.0)
 
         # Layers/Networks
-        # self.input_layer = nn.Linear(2, self.embed_dim)
+        self.input_layer = nn.Linear(2, self.embed_dim)
 
-        self.input_layer = rff.layers.GaussianEncoding(
-            sigma=10.0, input_size=2, encoded_size=self.embed_dim // 2
-        )
+        # self.input_layer = rff.layers.GaussianEncoding(
+        #     sigma=10.0, input_size=2, encoded_size=self.embed_dim // 2
+        # )
         self.transformer = nn.Sequential(
             *[
                 AttentionBlock(
