@@ -266,7 +266,8 @@ def main():
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
     if args.wandb:
-        run = wandb.init(project="md17_locs", config=args)
+        run_name = args.model_type + "_" + args.localizer_type + "_" + args.mol
+        run = wandb.init(project="md17_locs", config=args, name=run_name)
         run.watch(model)
         # create a wandb model artifact
         artifact = wandb.Artifact("model", type="model")
