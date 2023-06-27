@@ -178,7 +178,6 @@ class EqMotion(nn.Module):
         )
 
         vel_angle = torch.acos(torch.clamp(vel_cosangle, -1, 1))
-        pdb.set_trace()
         batch_size, agent_num, length = x.shape[0], x.shape[1], x.shape[2]
         if self.apply_dct:
             x_center = torch.mean(x, dim=(1, 2), keepdim=True)
@@ -212,7 +211,6 @@ class EqMotion(nn.Module):
         x_mean = torch.mean(torch.mean(x, dim=-2, keepdim=True), dim=-3, keepdim=True)
         x = self.predict_head((x - x_mean).transpose(2, 3)).transpose(2, 3) + x_mean
 
-        pdb.set_trace()
         if self.apply_dct:
             x = torch.matmul(idct_m, x)
             x = x + x_center
