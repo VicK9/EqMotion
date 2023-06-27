@@ -3,10 +3,10 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --gpus-per-node=1
-#SBATCH --job-name=Transformer_locs
+#SBATCH --job-name=SpaTemp_locs
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=00:02:00
+#SBATCH --time=04:00:00
 #SBATCH --mem=120000M
 #SBATCH --output=/home/vkyriacou88/EqMotion/slurm_scripts/outputs/lcos_spatio_temporal_%A.out
 #SBATCH --array=1-2
