@@ -303,7 +303,7 @@ def main():
                 "*** Best Val Loss: %.5f \t Best Test Loss: %.5f \t Best ade: %.5f \t Best epoch %d"
                 % (best_val_loss, best_test_loss, best_ade, best_epoch)
             )
-            print("The seed is :", seed)
+            # print("The seed is :", seed)
 
     if args.wandb:
         run.finish()
