@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import math
 import random
 import pdb
-
+import wandb
 
 parser = argparse.ArgumentParser(description="EqMotion")
 parser.add_argument(
@@ -93,6 +93,7 @@ parser.add_argument("--tanh", type=eval, default=False, metavar="N", help="use t
 parser.add_argument("--apply_decay", action="store_true")
 parser.add_argument("--mol", type=str, default="aspirin", help="Name of the molecule.")
 parser.add_argument("--vis", action="store_true")
+parser.add_argument("--wandb", action="store_true")
 
 
 # --------------LOCS args----------------
@@ -264,14 +265,22 @@ def main():
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
-
+    if args.wandb:
+        run = wandb.init(project="md17_locs", config=args)
+        run.watch(model)
+        # create a wandb model artifact
+        artifact = wandb.Artifact("model", type="model")
+        run.log_artifact(artifact)
+        # create a wandb dataset artifact
+        artifact = wandb.Artifact("dataset", type="dataset")
+        run.log_artifact(artifact)
     results = {"epochs": [], "losess": []}
     best_val_loss = 1e8
     best_test_loss = 1e8
     best_ade = 1e8
     best_epoch = 0
     for epoch in range(0, args.epochs):
-        train(model, optimizer, epoch, loader_train)
+        train(model, optimizer, epoch, loader_train, run)
         if epoch % args.test_interval == 0:
             # train(epoch, loader_train, backprop=False)
             val_loss, _ = test(model, optimizer, epoch, loader_val, backprop=False)
@@ -296,7 +305,7 @@ def main():
 constant = 1
 
 
-def train(model, optimizer, epoch, loader, backprop=True):
+def train(model, optimizer, epoch, loader, backprop=True, logger=None):
     if backprop:
         model.train()
     else:
@@ -304,7 +313,7 @@ def train(model, optimizer, epoch, loader, backprop=True):
 
     res = {"epoch": epoch, "loss": 0, "coord_reg": 0, "counter": 0}
 
-    for data in tqdm(loader):
+    for batch_idx, data in enumerate(loader):
         batch_size, n_nodes, length, _ = data[0].size()
         data = [d.to(device) for d in data]
         loc, vel, edge_attr, loc_end = data
@@ -334,11 +343,13 @@ def train(model, optimizer, epoch, loader, backprop=True):
         "%s epoch %d avg loss: %.5f"
         % (prefix + loader.dataset.partition, epoch, res["loss"] / res["counter"])
     )
+    if logger is not None:
+        logger.log({f"{loader.dataset.partition}/loss": res["loss"] / res["counter"]})
 
     return res["loss"] / res["counter"]
 
 
-def test(model, optimizer, epoch, loader, backprop=True):
+def test(model, optimizer, epoch, loader, backprop=True, logger=None):
     if backprop:
         model.train()
     else:
@@ -401,6 +412,15 @@ def test(model, optimizer, epoch, loader, backprop=True):
             res["ade"] / res["counter"],
         )
     )
+
+    if logger is not None:
+        logger.log(
+            {
+                f"{loader.dataset.partition}/fde": res["loss"] / res["counter"],
+                f"{loader.dataset.partition}/ade": res["ade"] / res["counter"],
+            }
+        )
+
     return res["loss"] / res["counter"], res["ade"] / res["counter"]
 
 
