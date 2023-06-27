@@ -3,7 +3,7 @@
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
 #SBATCH --gpus-per-node=1
-#SBATCH --job-name=Transformer_locs
+#SBATCH --job-name=VelAcc_locs
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
 #SBATCH --time=4:00:00
@@ -25,7 +25,7 @@ molecules=("aspirin" "benzene")   # Adjust script names as per your files
 
 mol=${molecules[$SLURM_ARRAY_TASK_ID-1]}
  
-echo "Running script ./run_md17.sh --wandb --localizer_type spatio_temporal --mol $mol"
+echo "Running script ./run_md17.sh --wandb --localizer_type velacc --mol $mol"
 
 # run the script
-./run_md17.sh --wandb --localizer_type velacc
+./run_md17.sh --wandb --localizer_type velacc --mol $mol
