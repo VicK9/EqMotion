@@ -808,7 +808,7 @@ class SpatioTemporalFrame(nn.Module):
 
         self.spatial_encoder = SpatioTemporalEGNN(
             in_node_nf=params.get("localizer_embedding_size", 128),
-            in_edge_nf=2,
+            in_edge_nf=2 if params.get("use_z", False) else 1,
             hidden_nf=params.get("localizer_hidden_size", 128),
             device="cpu",
             act_fn=nn.SiLU(),
