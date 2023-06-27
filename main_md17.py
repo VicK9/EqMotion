@@ -280,11 +280,15 @@ def main():
     best_ade = 1e8
     best_epoch = 0
     for epoch in range(0, args.epochs):
-        train(model, optimizer, epoch, loader_train, run)
+        train(model, optimizer, epoch, loader_train, logger=run)
         if epoch % args.test_interval == 0:
             # train(epoch, loader_train, backprop=False)
-            val_loss, _ = test(model, optimizer, epoch, loader_val, backprop=False)
-            test_loss, ade = test(model, optimizer, epoch, loader_test, backprop=False)
+            val_loss, _ = test(
+                model, optimizer, epoch, loader_val, backprop=False, logger=run
+            )
+            test_loss, ade = test(
+                model, optimizer, epoch, loader_test, backprop=False, logger=run
+            )
             # _, _ = check_equivariant(model, optimizer, epoch, loader_test, backprop=False)
             results["epochs"].append(epoch)
             results["losess"].append(test_loss)
@@ -299,6 +303,8 @@ def main():
             )
             print("The seed is :", seed)
 
+    if args.wandb:
+        run.finish()
     return best_val_loss, best_test_loss, best_epoch
 
 
@@ -325,7 +331,7 @@ def train(model, optimizer, epoch, loader, backprop=True, logger=None):
             nodes = torch.sqrt(torch.sum(vel**2, dim=-1)).detach()
             loc_pred, category = model(nodes, loc.detach(), vel)
         else:
-            sequence = torch.cat([loc, vel], dim=-1).permute(0, 2, 1, 3).contiguous()
+            sequence = torch.cat([loc, vel], dim=-1).contiguous()
             loc_pred = model(loc, vel, None, sequence).unsqueeze(2)
         loss = torch.mean(torch.norm(loc_pred - loc_end, dim=-1))
 
@@ -373,9 +379,7 @@ def test(model, optimizer, epoch, loader, backprop=True, logger=None):
                 nodes = torch.sqrt(torch.sum(vel**2, dim=-1)).detach()
                 loc_pred, category = model(nodes, loc.detach(), vel)
             else:
-                sequence = (
-                    torch.cat([loc, vel], dim=-1).permute(0, 2, 1, 3).contiguous()
-                )
+                sequence = torch.cat([loc, vel], dim=-1).contiguous()
                 loc_pred = model(loc, vel, None, sequence).unsqueeze(2)
 
             loc_pred = np.array(loc_pred.cpu())

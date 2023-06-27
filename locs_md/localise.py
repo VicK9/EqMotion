@@ -160,9 +160,9 @@ class FrameTransformer(nn.Module):
         # positional and velocity features. We need to reshape the input to be in the form of
         # [B*N, T, num_features] so that we can apply the Transformer to each node independently.
         # Reshape input from [B,N,T,num_features] to be [B*N, T, num_features]
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B * N, T, 2)
+        norm_x = norm_x.reshape(B * N, T, 2)
         B2, _, _ = norm_x.shape
         norm_x = self.input_layer(norm_x)
 
@@ -258,9 +258,9 @@ class FrameTransformer2(nn.Module):
         # positional and velocity features. We need to reshape the input to be in the form of
         # [B*N, T, num_features] so that we can apply the Transformer to each node independently.
         # Reshape input from [B,N,T,num_features] to be [B*N, T, num_features]
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B, N, T * 2)
+        norm_x = norm_x.reshape(B, N, T * 2)
         norm_x = self.input_layer(norm_x)
         # norm_x = norm_x + self.pos_embedding
         # Apply Transforrmer
@@ -365,9 +365,9 @@ class FrameMLP(nn.Module):
         # [B, N, T * num_features].
         # Reshape input from [B,N,T,num_features] to be [B,N, T * num_features]
 
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B, N, T * 2)
+        norm_x = norm_x.reshape(B, N, T * 2)
 
         out = self.mlp(norm_x).unsqueeze(-1)
 
@@ -434,11 +434,11 @@ class FrameResMLP(nn.Module):
         # positional and velocity features. We need to reshape the input to be in the form of
         # [B, N, T * num_features].
         # Reshape input from [B,N,T,num_features] to be [B,N, T * num_features]
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
 
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
 
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B, N, T * 2)
+        norm_x = norm_x.reshape(B, N, T * 2)
 
         out = self.mlp(norm_x).unsqueeze(-1)
         # 2*T
@@ -487,10 +487,10 @@ class FrameGVP(nn.Module):
         )
 
     def forward(self, x):
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
         # B,N,2*T,1
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B, N, T * 2)
+        norm_x = norm_x.reshape(B, N, T * 2)
         # B,N,2*T,3
         x = x.unflatten(-1, (2, 3)).transpose(1, 2).flatten(2, 3)
         # Pass these to the GVP
@@ -581,9 +581,9 @@ class TemporalEncoder(nn.Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, self.embed_dim))
 
     def forward(self, x):
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B * N, T, 2)
+        norm_x = norm_x.reshape(B * N, T, 2)
         B2, _, _ = norm_x.shape
         norm_x = self.input_layer(norm_x)
 
@@ -651,10 +651,10 @@ class SpatialEncoder(nn.Module):
 
     def forward(self, x):
         # Preprocess input
-        B, T, N, F = x.shape
+        B, N, T, F = x.shape
         # Charge is also a feature
         norm_x = x.unflatten(-1, (2, 3)).norm(dim=-1)
-        norm_x = norm_x.permute(0, 2, 1, 3).reshape(B, N, T * 2)
+        norm_x = norm_x.reshape(B, N, T * 2)
         norm_x = self.input_layer(norm_x)
         # norm_x = norm_x + self.pos_embedding
         # Apply Transforrmer
