@@ -1,0 +1,7 @@
+# ignore all pycache files
+__pycache__/
+
+# ignore all data files
+md17/dataset/*.npz
+md17/processed_dataset/*
+# md17/processed_dataset/*.npy
