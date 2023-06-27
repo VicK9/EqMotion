@@ -98,7 +98,7 @@ parser.add_argument("--wandb", action="store_true")
 
 # --------------LOCS args----------------
 parser.add_argument(
-    "--model_type", default="locs", choices=["locs", "egnn", "eqmotion"]
+    "--model_type", default="eqmotion", choices=["locs", "egnn", "eqmotion"]
 )
 parser.add_argument("--model_name", default="locs")
 # GNN
@@ -276,6 +276,7 @@ def main():
         run.log_artifact(artifact)
     else:
         run = None
+    print(model)
     results = {"epochs": [], "losess": []}
     best_val_loss = 1e8
     best_test_loss = 1e8
