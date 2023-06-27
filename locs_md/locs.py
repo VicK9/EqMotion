@@ -6,7 +6,7 @@ from torch.nn import init
 import torch.nn.functional as F
 from torch_scatter import scatter
 from torch_geometric.nn import MessagePassing
-from locs.models.model_factory import LocalizerFactory
+from locs_md.model_factory import LocalizerFactory
 
 from pytorch3d.transforms import so3_exponential_map, so3_log_map
 
