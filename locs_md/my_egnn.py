@@ -371,7 +371,7 @@ class EGNN_rot(nn.Module):
         in_node_nf,
         in_edge_nf,
         hidden_nf,
-        device="cpu",
+        device="cuda" if torch.cuda.is_available() else "cpu",
         act_fn=nn.SiLU(),
         n_layers=4,
         coords_weight=1.0,
