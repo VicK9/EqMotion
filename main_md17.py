@@ -278,6 +278,16 @@ def main():
     else:
         run = None
     print(model)
+    # Print a summary of the model with the number of parameters
+    # and the number of trainable parameters as a table
+    pytorch_total_params = sum(p.numel() for p in model.parameters())
+    pytorch_trainable_params = sum(
+        p.numel() for p in model.parameters() if p.requires_grad
+    )
+
+    print(f"Total number of parameters: {pytorch_total_params}")
+    print(f"Total number of trainable parameters: {pytorch_trainable_params}")
+
     results = {"epochs": [], "losess": []}
     best_val_loss = 1e8
     best_test_loss = 1e8
