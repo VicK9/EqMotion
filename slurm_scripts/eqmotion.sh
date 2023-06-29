@@ -6,10 +6,10 @@
 #SBATCH --job-name=Eqmotion
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=18
-#SBATCH --time=4:00:00
+#SBATCH --time=3:00:00
 #SBATCH --mem=120000M
 #SBATCH --output=/home/vkyriacou88/EqMotion/slurm_scripts/outputs/eqmotion_%A.out
-#SBATCH --array=1-2
+#SBATCH --array=1-4
 
 module purge
 module load 2021
@@ -21,10 +21,10 @@ source activate locs_new
 cd ~/EqMotion
 
 # Define an array of the molecules to be used
-molecules=("aspirin" "benzene")   # Adjust script names as per your files
+molecules=("aspirin" "benzene" "ethanol" "malonaldehyde")  # Adjust script names as per your files
 
 mol=${molecules[$SLURM_ARRAY_TASK_ID-1]}
  
 echo "Running script ./run_md17.sh --wandb --localizer_type spatio_temporal --mol $mol"
 # run the script
-~/.conda/envs/locs_new/bin/python  -u main_md17.py --seed 1 --wandb --model_type eqmotion --mol $mol
+~/.conda/envs/locs_new/bin/python  -u main_md17.py --seed 555 --wandb --model_type eqmotion --mol $mol --epochs 300 --batch_size 50

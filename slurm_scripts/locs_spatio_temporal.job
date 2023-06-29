@@ -9,7 +9,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --mem=120000M
 #SBATCH --output=/home/vkyriacou88/EqMotion/slurm_scripts/outputs/lcos_spatio_temporal_%A.out
-#SBATCH --array=1-2
+#SBATCH --array=3-4
 
 module purge
 module load 2021
@@ -21,10 +21,10 @@ source activate locs_new
 cd ~/EqMotion
 
 # Define an array of the molecules to be used
-molecules=("aspirin" "benzene")   # Adjust script names as per your files
+molecules=("aspirin" "benzene" "ethanol" "malonaldehyde")   # "aspirin" "benzene" "ethanol" "malonaldehyde"
 
 mol=${molecules[$SLURM_ARRAY_TASK_ID-1]}
  
 echo "Running script ./run_md17.sh --wandb --localizer_type spatio_temporal --mol $mol"
 # run the script
-./run_md17.sh --wandb --localizer_type spatio_temporal --mol $mol
+./run_md17.sh --wandb --localizer_type spatio_temporal --mol $mol --lr 0.0001 --epochs 500
