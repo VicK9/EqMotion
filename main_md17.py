@@ -23,7 +23,7 @@ parser.add_argument(
 parser.add_argument(
     "--batch_size",
     type=int,
-    default=100,
+    default=50,
     metavar="N",
     help="input batch size for training (default: 128)",
 )
@@ -51,7 +51,7 @@ parser.add_argument(
 parser.add_argument(
     "--no-cuda", action="store_true", default=False, help="enables CUDA training"
 )
-parser.add_argument("--seed", type=int, default=-1, metavar="N", help="the rand seed")
+parser.add_argument("--seed", type=int, default=1, metavar="N", help="the rand seed")
 parser.add_argument(
     "--test_interval",
     type=int,
@@ -62,7 +62,7 @@ parser.add_argument(
 parser.add_argument(
     "--outf",
     type=str,
-    default="n_body_system/logs",
+    default="md17/logs",
     metavar="N",
     help="folder to output",
 )
@@ -76,13 +76,16 @@ parser.add_argument(
     help="number of layers for the autoencoder",
 )
 parser.add_argument(
+    "--channels", type=int, default=64, metavar="N", help="number of channels"
+)
+parser.add_argument(
     "--max_training_samples",
     type=int,
     default=5000,
     metavar="N",
     help="maximum amount of training samples",
 )
-parser.add_argument("--dataset", type=str, default="nbody", metavar="N", help="nbody")
+parser.add_argument("--dataset", type=str, default="md17", metavar="N", help="nbody")
 parser.add_argument(
     "--weight_decay", type=float, default=1e-12, metavar="N", help="timing experiment"
 )
@@ -179,7 +182,7 @@ def main():
     past_length = args.past_length
     future_length = args.future_length
 
-    args.data_dir = "md17/processed_dataset"
+    args.data_dir = "md17/processed_dataset/without_hydrogen"
     args.delta_frame = 50
 
     dataset_train = MD17Dataset(
@@ -236,7 +239,7 @@ def main():
             in_edge_nf=2,
             hidden_nf=args.nf,
             in_channel=args.past_length,
-            hid_channel=32,
+            hid_channel=args.channels,
             out_channel=args.future_length,
             device=device,
             n_layers=args.n_layers,
@@ -265,8 +268,13 @@ def main():
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=50, gamma=0.9
+    )  # decay LR by a factor of 0.1 every 10 epochs
+
     if args.wandb:
         run_name = args.model_type + "_" + args.localizer_type + "_" + args.mol
+        save_path = os.path.join(args.outf, args.exp_name)
         run = wandb.init(project="md17_locs", config=args, name=run_name)
         run.watch(model)
         # create a wandb model artifact
@@ -275,6 +283,8 @@ def main():
         # create a wandb dataset artifact
         artifact = wandb.Artifact("dataset", type="dataset")
         run.log_artifact(artifact)
+        save_path = os.path.join(args.outf, args.exp_name, run_name, run.id)
+        os.makedirs(save_path)
     else:
         run = None
     print(model)
@@ -287,7 +297,7 @@ def main():
 
     print(f"Total number of parameters: {pytorch_total_params}")
     print(f"Total number of trainable parameters: {pytorch_trainable_params}")
-
+    run.log({"model/total_params": pytorch_total_params})
     results = {"epochs": [], "losess": []}
     best_val_loss = 1e8
     best_test_loss = 1e8
@@ -295,6 +305,8 @@ def main():
     best_epoch = 0
     for epoch in range(0, args.epochs):
         train(model, optimizer, epoch, loader_train, logger=run)
+        # scheduler.step()
+
         if epoch % args.test_interval == 0:
             # train(epoch, loader_train, backprop=False)
             val_loss, _ = test(
@@ -311,6 +323,12 @@ def main():
                 best_test_loss = test_loss
                 best_ade = ade
                 best_epoch = epoch
+
+                torch.save(model.state_dict(), os.path.join(save_path, "best_model.pt"))
+                torch.save(
+                    optimizer.state_dict(),
+                    os.path.join(save_path, "best_model_train_state.pt"),
+                )
             print(
                 "*** Best Val Loss: %.5f \t Best Test Loss: %.5f \t Best ade: %.5f \t Best epoch %d"
                 % (best_val_loss, best_test_loss, best_ade, best_epoch)
@@ -318,6 +336,14 @@ def main():
             # print("The seed is :", seed)
 
     if args.wandb:
+        run.log(
+            {
+                "model/best_val_loss": best_val_loss,
+                "model/best_test_loss": best_test_loss,
+                "model/best_epoch": best_epoch,
+                "model/best_ade": best_ade,
+            }
+        )
         run.finish()
     return best_val_loss, best_test_loss, best_epoch
 
