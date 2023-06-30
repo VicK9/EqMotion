@@ -62,7 +62,7 @@ class MD17Dataset:
         loc, vel, edge_attr = loc[i], vel[i], edge_attr[i]
         # loc shape: (N,T,3)
         frame_0 = self.past_length
-        frame_T = self.past_length + 1
+        frame_T = self.past_length + self.future_length
         # feature = torch.cat([loc, vel], dim=-1)
         # # Use torch.unfold to split the trajectory into overlapping windows
         # feature = (
