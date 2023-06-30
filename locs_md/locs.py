@@ -426,10 +426,10 @@ class LoCS(nn.Module):
 
     def forward(self, x, vel, charges, sequence):
         """inputs shape: [batch_size, num_objects, input_size]"""
-        x = x[..., -1, :]
-        vel = vel[..., -1, :]
+        x_t = x[..., -1, :]
+        vel_t = vel[..., -1, :]
 
-        inputs = torch.cat([x, vel], dim=-1)
+        inputs = torch.cat([x_t, vel_t], dim=-1)
         edges = self.send_edges, self.recv_edges
 
         # Global to Local
@@ -437,7 +437,7 @@ class LoCS(nn.Module):
         # GNN
         pred = self.gnn(rel_feat, edge_attr, edges)
         # Local to Global
-        pred = self.globalizer(pred, Rinv)
+        pred = self.globalizer(pred, Rinv).reshape(x.shape)
 
         # Predict position/velocity difference and integrate
         # outputs = torch.cat([x + pred, pred], dim=-1)
