@@ -66,6 +66,8 @@ parser.add_argument(
     metavar="N",
     help="folder to output",
 )
+parser.add_argument("--lr_scheduler", type=str, default="step", help="lr scheduler")
+
 parser.add_argument("--lr", type=float, default=5e-4, metavar="N", help="learning rate")
 parser.add_argument("--nf", type=int, default=64, metavar="N", help="learning rate")
 parser.add_argument(
@@ -97,7 +99,9 @@ parser.add_argument("--apply_decay", action="store_true")
 parser.add_argument("--mol", type=str, default="aspirin", help="Name of the molecule.")
 parser.add_argument("--vis", action="store_true")
 parser.add_argument("--wandb", action="store_true")
-
+parser.add_argument(
+    "--use_z", action="store_true", help="use atomic numbers of molecules in the model"
+)
 
 # --------------LOCS args----------------
 parser.add_argument(
@@ -134,11 +138,11 @@ parser.add_argument("--localizer_n_heads", type=int, default=4)
 parser.add_argument("--localizer_n_layers", type=int, default=2)
 parser.add_argument("--localizer_dropout", type=float, default=0.0)
 parser.add_argument("--window_size", type=int, default=10)
+# This is for the GVP model to decide whether to use the gating mechanism
+parser.add_argument("--localizer_vector_gate", action="store_true")
 
 # ------------END LOCS ARGS----------------------  #
 
-# This is for the GVP model to decide whether to use the gating mechanism
-parser.add_argument("--localizer_vector_gate", action="store_true")
 
 # aspirin, benzene, ethanol, malonaldehyde, naphthalene, salicylic, toluene, uracil
 time_exp_dic = {"time": 0, "counter": 0}
@@ -268,9 +272,10 @@ def main():
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=50, gamma=0.9
-    )  # decay LR by a factor of 0.1 every 10 epochs
+    if args.lr_scheduler != "none":
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=60, gamma=0.9
+        )  # decay LR by a factor of 0.1 every 10 epochs
 
     if args.wandb:
         run_name = args.model_type + "_" + args.localizer_type + "_" + args.mol
@@ -305,7 +310,8 @@ def main():
     best_epoch = 0
     for epoch in range(0, args.epochs):
         train(model, optimizer, epoch, loader_train, logger=run)
-        # scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
 
         if epoch % args.test_interval == 0:
             # train(epoch, loader_train, backprop=False)
