@@ -45,7 +45,7 @@ class MD17Dataset:
         vel[:, :, 0] = vel[:, :, 1]
 
         edge_attr = edge_attr[None, :, :].repeat(loc.shape[0], 1, 1)
-        z = z[None, :].repeat(loc.shape[0], 1)
+        # z = z[None, :].repeat(loc.shape[0], 1)
         # edge_attr = self.get_molecule_structure(loc[0])
 
         return (loc, vel, edge_attr, z)
@@ -72,7 +72,13 @@ class MD17Dataset:
         #     .contiguous()
         # )
         # if self.training:
-        return loc[:, 0:frame_0], vel[:, 0:frame_0], edge_attr, loc[:, frame_0:frame_T]
+        return (
+            loc[:, 0:frame_0],
+            vel[:, 0:frame_0],
+            edge_attr,
+            loc[:, frame_0:frame_T],
+            z,
+        )
         # else:
         #     return loc[:,0:frame_0], vel[:,0:frame_0], edge_attr, loc[:,frame_0:frame_T]
         # if self.training:
