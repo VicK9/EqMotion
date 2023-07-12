@@ -11,7 +11,7 @@ def acronym_localizer_case(x):
         "resmlp": "FrameResMLP",
         "gvp": "FrameGVP",
         "transformer_temporal": "FrameTransformer",
-        "transformer_spatial": "FrameTransformer2",
+        "spatio_temporal_gat": "SpatioTemporalFrame_GAT",
         "spatio_temporal": "SpatioTemporalFrame",
     }
     # print(x, acronyms.get(x, x))

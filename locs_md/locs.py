@@ -200,7 +200,7 @@ class Localizer(nn.Module):
         self.window_size = params.get("window_size", 10)
 
         self.type = params.get("localizer_type", "baseline")
-        if self.type != "baseline" and self.type != "velacc":
+        if self.type not in ["baseline", "velacc", "identity"]:
             self.frame_module = LocalizerFactory.create(self.type, params)
 
     def set_edge_index(self, send_edges, recv_edges):
@@ -263,6 +263,19 @@ class Localizer(nn.Module):
             # R = exp(a * log(R_mlp) + (1-a) * log(R_init)
             R = alpha * so3_log_map(mlp_R) + (1 - alpha) * so3_log_map(init_R)
             R = so3_exponential_map(R)
+        elif self.type == "spatio_temporal_gat":
+            edges = (self.send_edges, self.recv_edges)
+            current_positions = sequence[..., -1, :].detach()
+            x_j_t, x_i_t = self.sender_receiver_features(current_positions)
+            node_distances = torch.norm(x_j_t - x_i_t, p=2, dim=-1, keepdim=True)
+            if charges is not None:
+                c_j, c_i = self.sender_receiver_features(charges)
+                rel_charges = c_j * c_i
+                edge_attr = torch.cat([rel_charges, node_distances], dim=-1)
+            else:
+                edge_attr = node_distances
+
+            R = self.frame_module(rel_pos, edges, edge_attr)
         elif self.type == "spatio_temporal":
             edges = (self.send_edges, self.recv_edges)
             current_positions = sequence[..., -1, :].detach()
@@ -286,6 +299,15 @@ class Localizer(nn.Module):
             )
 
             R, _ = self.frame_module(rel_pos, edges, edge_attr, vel_acc)
+        elif self.type == "identity":
+            # R is the identity matrix B,N,3,3
+            B, N, T, F = sequence.shape
+            R = (
+                torch.eye(3, device=sequence.device)
+                .unsqueeze(0)
+                .unsqueeze(0)
+                .repeat(B, N, 1, 1)
+            )
         else:
             R = self.frame_module(rel_pos)
 
@@ -362,6 +384,7 @@ class Localizer(nn.Module):
     def forward(self, x, charges, sequence):
         # self.set_edge_index(*edges)
         # rel_feat is [B, N, 2*T*3+ 1 or 0]
+        
         rel_feat, R = self.canonicalize_inputs(x, charges, sequence)
 
         # edge_attr is [B, N*(N-1), T*9 + 5 (or 4)]
@@ -550,7 +573,7 @@ class GNNLayer(nn.Module):
             )
 
         edge_attr = self.message_fn(edge_attr)
-
+        
         x = (
             self.res(x)
             + scatter(
