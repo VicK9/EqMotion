@@ -397,7 +397,7 @@ def train(model, optimizer, epoch, loader, backprop=True, logger=None):
             sequence = torch.cat([loc, vel], dim=-1).contiguous()
             if not args.use_z:
                 z = None
-            pdb.set_trace()
+
             loc_pred = model(loc, vel, z, sequence)
         loss = torch.mean(torch.norm(loc_pred - loc_end, dim=-1))
 
@@ -437,7 +437,7 @@ def test(model, optimizer, epoch, loader, backprop=True, logger=None):
             batch_size, n_nodes, length, _ = data[0].size()
             data = [d.to(device) for d in data]
             loc, vel, edge_attr, loc_end, z = data
-
+            z = z.unsqueeze(-1)
             optimizer.zero_grad()
 
             vel = vel * constant
