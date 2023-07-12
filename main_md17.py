@@ -119,12 +119,13 @@ parser.add_argument(
     "--localizer_type",
     default="baseline",
     choices=[
+        "identity",
         "baseline",
         "velacc",
         "mlp",
         "emlp",
         "transformer_temporal",
-        "transformer_spatial",
+        "spatio_temporal_gat",
         "resmlp",
         "gvp",
         "spatio_temporal",
@@ -256,11 +257,14 @@ def main():
         params["load_best_model"] = False
         params["num_vars"] = dataset_train.num_nodes
         params["input_size"] = 6  # 3 for position and 3 for velocity
-
+        params["window_size"] = args.past_length
+        params["device"] = device
+        use_z = 1 if args.use_z else 0
+        input_size = args.gnn_n_in_dims * args.past_length + use_z
         model = LoCS(
-            input_size=args.gnn_n_in_dims * args.window_size,
+            input_size=input_size,
             hidden_size=args.gnn_hidden_size,
-            output_size=args.gnn_n_out_dims,
+            output_size=args.gnn_n_out_dims * args.future_length,
             dropout_prob=args.gnn_dropout,
             num_dims=3,
             params=params,
@@ -272,11 +276,20 @@ def main():
     optimizer = optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
-    if args.lr_scheduler != "none":
+    if args.lr_scheduler == "step":
         scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=60, gamma=0.9
+            optimizer, step_size=60, gamma=0.1
         )  # decay LR by a factor of 0.1 every 10 epochs
-
+    elif args.lr_scheduler == "multistep":
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer=optimizer, milestones=[160, 240], gamma=0.4
+        )
+    elif args.lr_scheduler == "cosine":
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer=optimizer, T_max=250, eta_min=0.00001, last_epoch=-1
+        )
+    else:
+        scheduler = None
     if args.wandb:
         run_name = args.model_type + "_" + args.localizer_type + "_" + args.mol
         save_path = os.path.join(args.outf, args.exp_name)
@@ -302,17 +315,21 @@ def main():
 
     print(f"Total number of parameters: {pytorch_total_params}")
     print(f"Total number of trainable parameters: {pytorch_trainable_params}")
-    run.log({"model/total_params": pytorch_total_params})
+    if run is not None:
+        run.log({"model/total_params": pytorch_total_params})
     results = {"epochs": [], "losess": []}
     best_val_loss = 1e8
     best_test_loss = 1e8
     best_ade = 1e8
     best_epoch = 0
+    last_lr = args.lr
     for epoch in range(0, args.epochs):
         train(model, optimizer, epoch, loader_train, logger=run)
         if scheduler is not None:
             scheduler.step()
-
+            last_lr = scheduler.get_last_lr()[0]
+        if run is not None:
+            run.log({"lr": last_lr, "epoch": epoch})
         if epoch % args.test_interval == 0:
             # train(epoch, loader_train, backprop=False)
             val_loss, _ = test(
@@ -368,8 +385,8 @@ def train(model, optimizer, epoch, loader, backprop=True, logger=None):
     for batch_idx, data in enumerate(loader):
         batch_size, n_nodes, length, _ = data[0].size()
         data = [d.to(device) for d in data]
-        loc, vel, edge_attr, loc_end = data
-
+        loc, vel, edge_attr, loc_end, z = data
+        z = z.unsqueeze(-1)
         optimizer.zero_grad()
 
         vel = vel * constant
@@ -378,7 +395,10 @@ def train(model, optimizer, epoch, loader, backprop=True, logger=None):
             loc_pred, category = model(nodes, loc.detach(), vel)
         else:
             sequence = torch.cat([loc, vel], dim=-1).contiguous()
-            loc_pred = model(loc, vel, None, sequence).unsqueeze(2)
+            if not args.use_z:
+                z = None
+            pdb.set_trace()
+            loc_pred = model(loc, vel, z, sequence)
         loss = torch.mean(torch.norm(loc_pred - loc_end, dim=-1))
 
         if backprop:
@@ -416,7 +436,7 @@ def test(model, optimizer, epoch, loader, backprop=True, logger=None):
         for batch_idx, data in enumerate(loader):
             batch_size, n_nodes, length, _ = data[0].size()
             data = [d.to(device) for d in data]
-            loc, vel, edge_attr, loc_end = data
+            loc, vel, edge_attr, loc_end, z = data
 
             optimizer.zero_grad()
 
@@ -426,7 +446,9 @@ def test(model, optimizer, epoch, loader, backprop=True, logger=None):
                 loc_pred, category = model(nodes, loc.detach(), vel)
             else:
                 sequence = torch.cat([loc, vel], dim=-1).contiguous()
-                loc_pred = model(loc, vel, None, sequence).unsqueeze(2)
+                if not args.use_z:
+                    z = None
+                loc_pred = model(loc, vel, z, sequence)
 
             loc_pred = np.array(loc_pred.cpu())
             loc_end = np.array(loc_end.cpu())
