@@ -662,6 +662,76 @@ class SpatialEncoder(nn.Module):
         return out
 
 
+class GraphAttentionLayer(nn.Module):
+    def __init__(self, node_in_features, edge_in_features, out_features):
+        super(GraphAttentionLayer, self).__init__()
+        self.node_in_features = node_in_features
+        self.edge_in_features = edge_in_features
+        self.out_features = out_features
+
+        # Trainable weights
+        self.W = nn.Linear(node_in_features, out_features, bias=False)
+        self.a = nn.Linear(2 * out_features + edge_in_features, 1, bias=False)
+
+        # Activation function
+        self.leakyrelu = nn.LeakyReLU(0.2)
+
+    def forward(self, x, edge_index, edge_attr):
+        # Linear transformation
+        h = self.W(x)
+        N = h.size()[0]
+
+        # Compute attention coefficients
+        a_input = torch.cat(
+            [h[edge_index[0]], h[edge_index[1]], edge_attr], dim=1
+        )  # concatenate along node dimension
+        e = self.leakyrelu(self.a(a_input))
+
+        # Compute softmax over the neighbor nodes for each node
+        attention = torch.zeros(N, N).to(x.device)
+        attention[edge_index[0], edge_index[1]] = e.squeeze()
+        attention = F.softmax(attention, dim=1)
+
+        # Compute the output features as a weighted sum of neighbor features
+        out = torch.mm(attention, h)
+
+        return out
+
+
+class GAT(nn.Module):
+    def __init__(
+        self,
+        n_layers,
+        node_in_features,
+        edge_in_features,
+        hidden_features,
+        out_features,
+    ):
+        super(GAT, self).__init__()
+
+        # Define the initial GAT layer
+        self.gat_layers = nn.ModuleList(
+            [GraphAttentionLayer(node_in_features, edge_in_features, hidden_features)]
+        )
+
+        # Define the hidden GAT layers
+        for _ in range(n_layers - 2):
+            self.gat_layers.append(
+                GraphAttentionLayer(hidden_features, edge_in_features, hidden_features)
+            )
+
+        # Define the final GAT layer
+        self.gat_layers.append(
+            GraphAttentionLayer(hidden_features, edge_in_features, out_features)
+        )
+
+    def forward(self, x, edge_index, edge_attr):
+        # Pass the input through each GAT layer
+        for layer in self.gat_layers:
+            x = layer(x, edge_index, edge_attr)
+        return x
+
+
 class SpatialGNNEncoder(nn.Module):
     def __init__(
         self,
@@ -692,30 +762,112 @@ class SpatialGNNEncoder(nn.Module):
         self.dropout_prob = params.get("localizer_dropout", 0.0)
         self.num_objects = params.get("localizer_n_objects", 5)
         self.n_out_dims = 2 * self.trajectory_size
-
+        self.device = params.get("device", "cpu")
+        self.edge_features = 2 if params.get("use_z", False) else 1
         # Layers/Networks
 
         self.GNN = GAT(
-            in_channels=self.embed_dim,
-            out_channels=self.embed_dim,
-            hidden_channels=self.hidden_dim,
-            dropout=self.dropout_prob,
-            num_layers=self.num_layers,
+            n_layers=3,
+            node_in_features=self.embed_dim,
+            edge_in_features=self.edge_features,
+            hidden_features=self.hidden_dim,
+            out_features=self.embed_dim,
         )
 
         self.output_layer = nn.Linear(self.embed_dim, self.n_out_dims)
         self.dropout = nn.Dropout(self.dropout_prob)
 
+    def get_edges(self, batch_size, n_nodes):
+        send_edges, recv_edges = torch.where(~torch.eye(n_nodes, dtype=bool))
+        edges = [torch.LongTensor(send_edges), torch.LongTensor(recv_edges)]
+        if batch_size == 1:
+            return edges
+        elif batch_size > 1:
+            rows, cols = [], []
+            for i in range(batch_size):
+                rows.append(edges[0] + n_nodes * i)
+                cols.append(edges[1] + n_nodes * i)
+            edges = [torch.cat(rows).to(self.device), torch.cat(cols).to(self.device)]
+        return edges
+
     def forward(self, x, edges, edge_attr):
+        # edge_index = torch.empty(2, edges[0].shape[0], dtype=torch.long)
+        # edge_index[0] = edges[0].to(torch.long)
+        # edge_index[1] = edges[1].to(torch.long)
+        B, N, H = x.shape
+        edges = self.get_edges(B, N)
         x = x.view(-1, self.embed_dim)
-        edge_index = torch.empty(2, edges[0].shape[0], dtype=torch.long)
-        edge_index[0] = edges[0].to(torch.long)
-        edge_index[1] = edges[1].to(torch.long)
+        edge_attr = edge_attr.view(-1, self.edge_features)
         # Input is the size of [B, N, H] where B is the batch size, N is the number of nodes, and H is the number of features
-        x = self.GNN(x, edge_index.to(x.device))
+        x = self.GNN(x, edges, edge_attr.to(x.device))
         x = self.dropout(x)
-        x = self.output_layer(x).view(-1, self.num_objects, self.n_out_dims)
+
+        x = self.output_layer(x).view(B, N, self.n_out_dims)
         return x
+
+
+class SpatioTemporalFrame_GAT(nn.Module):
+    """
+    Module that takes as input the node features and outputs a rotation matrix.
+    The procedure goes as follows:
+        1. Create temporal embedding for each node of the batch using a transformer encoder (rotation invariant)
+        2. Create spatial embedding for each node of the batch using a transformer encoder (rotation invariant)
+        3. Using the spatiotemporal embedding, perform cross attention between the spatial and temporal embedding
+           to produce a two scalar values for each node of the batch [B,N,2] where H is the hidden dimension,
+           to multiply with the vector features of each node and create a [B,N,2,3] result.
+        4. Using a GVP layer (linear layer without bias) of the form [B,N,2*T,3] -> [B,N,2,3] we create
+           two 3D vectors which using Gram-Scmidt orthogonalization we can construct an SO(3) rotation matrix.
+    Inputs:
+            embed_dim - Dimensionality of the input feature vectors
+            hidden_dim - Dimensionality of the hidden layer in the feed-forward networks
+            num_features - Number of features each node has (e.g. 4 for 2D coordinates [p_x,p_y,v_x,v_y]
+                           and 6 for 3D coordinates [p_x,p_y,p_z,v_x,v_y,v_z]])
+            n_out_dims - Output of MLP is 6D representation of two vectors, which by using Gram-Schmidt orthogonalization
+            dropout - Amount of dropout to apply in the feed-forward network and
+                      on the input encoding
+    """
+
+    def __init__(self, params):
+        super().__init__()
+        self.embed_dim = params.get("localizer_embedding_size", 128)
+        self.hidden_dim = params.get("localizer_hidden_size", 256)
+        self.num_features = params.get("localizer_n_in_dims", 6)
+        self.trajectory_size = params.get("window_size", 50)
+        self.dropout = params.get("localizer_dropout", 0.0)
+        self.n_out_dims = 2 * self.trajectory_size
+
+        self.temporal_encoder = TemporalEncoder(
+            params=params,
+        )
+
+        self.spatial_encoder = SpatialGNNEncoder(params=params)
+
+        self.gvp_linear = nn.Linear(2 * self.trajectory_size, 2, bias=False)
+
+    def forward(self, x, edges, edge_attr):
+        # Rotation representation is the velocity vector of last time step and the difference between the last two time steps
+
+        # Temporal embedding
+        temporal_embed = self.temporal_encoder(x)
+        # Spatial embedding
+        spatiotemporal_embed = self.spatial_encoder(
+            temporal_embed, edges, edge_attr
+        ).unsqueeze(-1)
+
+        # 2*T
+        x = x.unflatten(-1, (2, 3)).flatten(2, 3)
+
+        # B,N,2*T,3
+
+        y = spatiotemporal_embed * x
+        y = self.gvp_linear(y.transpose(-1, -2)).transpose(-1, -2)
+        # Now y is B,N,2T,3
+        # The output is a 6D representation of two vectors, which by using Gram-Schmidt orthogonalization
+        # we can construct an SO(3) rotation matrix and a translation vector.
+        v1, v2 = y[..., 0, :], y[..., 1, :]
+        # Construct the rotation matrix
+        out_R = construct_3d_basis_from_2_vectors(v1, v2)
+        return out_R
 
 
 class SpatioTemporalEGNN(nn.Module):
